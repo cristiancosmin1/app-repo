@@ -1,22 +1,37 @@
 # Shopping App
 
-Simple cloud-native shopping list application built with:
+A cloud-native shopping list application built with FastAPI, PostgreSQL and a static frontend.
 
-- FastAPI
-- PostgreSQL
-- SQLAlchemy
+The application is containerized with Docker and deployed to Kubernetes through a GitOps workflow using GitHub Actions, Helm and Argo CD.
 
 ## Features
 
-- Health endpoint
-- Create items
-- List items
-- Delete items
+- FastAPI REST API
+- HTML, CSS and JavaScript frontend
+- PostgreSQL persistence
+- Create, list and delete shopping items
+- Health-check endpoint
+- OpenAPI and Swagger documentation
+- Docker container image
+- Automated CI/CD pipeline with GitHub Actions
 
-## Run locally
+## Application architecture
 
-Create a Python virtual environment:
-
-```bash
-python3 -m venv .venv
-source .venv/bin/activate
+```text
+Browser
+   |
+   | HTTPS
+   v
+NGINX Ingress
+   |
+   v
+Shopping App Service
+   |
+   v
+FastAPI Pods
+   |
+   v
+PostgreSQL Service
+   |
+   v
+PostgreSQL Pod

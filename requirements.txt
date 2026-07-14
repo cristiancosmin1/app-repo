@@ -3,3 +3,5 @@ uvicorn[standard]
 sqlalchemy
 psycopg2-binary
 pydantic
+
+PyJWT[crypto]==2.10.1

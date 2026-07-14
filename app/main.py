@@ -1,4 +1,8 @@
+from pathlib import Path
+
 from fastapi import Depends, FastAPI, HTTPException, status
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
 
 from app import models, schemas
@@ -11,6 +15,22 @@ app = FastAPI(
     title="Shopping App",
     version="1.0.0",
 )
+
+
+BASE_DIR = Path(__file__).resolve().parent
+STATIC_DIR = BASE_DIR / "static"
+
+
+app.mount(
+    "/static",
+    StaticFiles(directory=STATIC_DIR),
+    name="static",
+)
+
+
+@app.get("/", include_in_schema=False)
+def frontend():
+    return FileResponse(STATIC_DIR / "index.html")
 
 
 @app.get("/health")

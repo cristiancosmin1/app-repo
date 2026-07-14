@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="ro">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <title>Shopping App</title>
+
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+
+<body>
+  <main class="container">
+    <h1>Shopping List</h1>
+
+    <form id="item-form">
+      <div class="form-group">
+        <label for="name">Produs</label>
+        <input
+          id="name"
+          name="name"
+          type="text"
+          placeholder="Exemplu: Mere"
+          required
+        >
+      </div>
+
+      <div class="form-group">
+        <label for="quantity">Cantitate</label>
+        <input
+          id="quantity"
+          name="quantity"
+          type="number"
+          min="1"
+          value="1"
+          required
+        >
+      </div>
+
+      <button type="submit">Adaugă produs</button>
+    </form>
+
+    <p id="message" class="message"></p>
+
+    <section>
+      <h2>Produse</h2>
+
+      <ul id="items-list"></ul>
+    </section>
+  </main>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

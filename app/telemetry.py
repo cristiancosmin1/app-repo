@@ -10,6 +10,8 @@ from opentelemetry.sdk.trace.export import BatchSpanProcessor
 
 
 def setup_telemetry(app, engine):
+    print(">>> setup_telemetry() EXECUTED <<<")
+
     resource = Resource.create(
         {
             "service.name": os.getenv(
@@ -23,10 +25,14 @@ def setup_telemetry(app, engine):
     provider = TracerProvider(resource=resource)
     trace.set_tracer_provider(provider)
 
+    print(">>> TracerProvider:", trace.get_tracer_provider())
+
     endpoint = os.getenv(
         "OTEL_EXPORTER_OTLP_ENDPOINT",
         "http://localhost:4318",
     )
+
+    print(">>> OTLP endpoint:", endpoint)
 
     exporter = OTLPSpanExporter(
         endpoint=f"{endpoint}/v1/traces",
@@ -36,10 +42,16 @@ def setup_telemetry(app, engine):
         BatchSpanProcessor(exporter)
     )
 
+    print(">>> FastAPI instrumentation...")
+
     FastAPIInstrumentor.instrument_app(app)
+
+    print(">>> SQLAlchemy instrumentation...")
 
     SQLAlchemyInstrumentor().instrument(
         engine=engine,
     )
+
+    print(">>> OpenTelemetry initialization complete <<<")
 
     return trace.get_tracer("shopping-app")

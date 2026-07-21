@@ -16,6 +16,9 @@ from fastapi import (
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
+from opentelemetry import trace
+
+from app.telemetry import setup_telemetry
 
 from app import models, schemas
 from app.database import Base, engine, get_db
@@ -29,6 +32,8 @@ app = FastAPI(
     title="Shopping App",
     version="2.0.0",
 )
+
+setup_telemetry(app, engine)
 
 
 BASE_DIR = Path(__file__).resolve().parent

@@ -33,9 +33,6 @@ app = FastAPI(
     version="2.0.0",
 )
 
-setup_telemetry(app, engine)
-
-
 BASE_DIR = Path(__file__).resolve().parent
 STATIC_DIR = BASE_DIR / "static"
 
@@ -258,3 +255,7 @@ def delete_item(
     )
 
     return None
+
+
+# Initialize OpenTelemetry after all middleware and routes are registered.
+setup_telemetry(app, engine)

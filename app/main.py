@@ -70,6 +70,15 @@ async def request_context_middleware(
 
     started_at = time.perf_counter()
 
+    # NEW
+    span = trace.get_current_span()
+    span_context = span.get_span_context()
+
+    trace_id = ""
+
+    if span_context.is_valid:
+        trace_id = format(span_context.trace_id, "032x")
+
     try:
         response = await call_next(request)
         status_code = response.status_code
@@ -92,6 +101,7 @@ async def request_context_middleware(
                     "env": "local",
                     "run_id": run_id,
                     "correlation_id": correlation_id,
+                    "trace_id": trace_id,  # NEW
                     "status_code": status_code,
                     "error_class": error_class,
                     "latency_ms": latency_ms,
@@ -110,6 +120,9 @@ async def request_context_middleware(
 
     response.headers["X-Correlation-Id"] = correlation_id
 
+    if run_id:
+        response.headers["X-Run-Id"] = run_id
+
     logger.info(
         json.dumps(
             {
@@ -118,6 +131,7 @@ async def request_context_middleware(
                 "env": "local",
                 "run_id": run_id,
                 "correlation_id": correlation_id,
+                "trace_id": trace_id,  # NEW
                 "status_code": status_code,
                 "error_class": error_class,
                 "latency_ms": latency_ms,
@@ -151,6 +165,12 @@ def log_authorized_action(
                     "correlation_id",
                     "",
                 ),
+                "trace_id": format(
+                    trace.get_current_span().get_span_context().trace_id,
+                    "032x",
+                )
+                if trace.get_current_span().get_span_context().is_valid
+                else "",
             }
         )
     )

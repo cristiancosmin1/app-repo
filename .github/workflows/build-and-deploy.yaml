@@ -8,6 +8,7 @@ on:
 
 permissions:
   contents: read
+  id-token: write
 
 env:
   IMAGE_NAME: cristiancosmin/shopping-app
@@ -227,11 +228,12 @@ jobs:
       - name: Checkout application repository
         uses: actions/checkout@v4
 
+      # GitHub Actions obtains an OIDC token and exchanges it
+      # for temporary AWS credentials.
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          role-to-assume: arn:aws:iam::691862618786:role/devops-levelup-github-actions
           aws-region: eu-central-1
 
       - name: Configure kubeconfig
@@ -275,7 +277,11 @@ jobs:
         run: |
           LB="${{ steps.ingress.outputs.hostname }}"
 
-          LB_IP="$(dig +short "$LB" | grep -E '^[0-9.]+' | head -n1)"
+          LB_IP="$(
+            dig +short "$LB" \
+              | grep -E '^[0-9.]+' \
+              | head -n1
+          )"
 
           if [ -z "$LB_IP" ]; then
             echo "Could not resolve LoadBalancer IP."
@@ -316,7 +322,8 @@ jobs:
               | jq -r '.ALICE_PASSWORD'
           )"
 
-          if [ -z "$ALICE_PASSWORD" ] || [ "$ALICE_PASSWORD" = "null" ]; then
+          if [ -z "$ALICE_PASSWORD" ] || \
+             [ "$ALICE_PASSWORD" = "null" ]; then
             echo "Alice password was not found."
             exit 1
           fi
@@ -476,14 +483,14 @@ jobs:
           mkdir -p debug
 
           kubectl get pods -A -o wide \
-            > debug/pods.txt
+            > debug/pods.txt || true
 
           kubectl get applications -n argocd \
-            > debug/argocd-applications.txt
+            > debug/argocd-applications.txt || true
 
           kubectl describe deployment shopping-app \
             -n shopping \
-            > debug/shopping-deployment.txt
+            > debug/shopping-deployment.txt || true
 
           kubectl logs \
             -n shopping \

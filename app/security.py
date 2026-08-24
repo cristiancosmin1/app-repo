@@ -12,7 +12,6 @@ from jwt.exceptions import (
     InvalidTokenError,
 )
 
-
 KEYCLOAK_ISSUER = os.getenv(
     "KEYCLOAK_ISSUER",
     "https://auth.local/realms/devops-lvlup",

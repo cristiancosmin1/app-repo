@@ -15,15 +15,13 @@ from fastapi import (
 )
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
-from sqlalchemy.orm import Session
 from opentelemetry import trace
-
-from app.telemetry import setup_telemetry
+from sqlalchemy.orm import Session
 
 from app import models, schemas
 from app.database import Base, engine, get_db
 from app.security import require_roles
-
+from app.telemetry import setup_telemetry
 
 Base.metadata.create_all(bind=engine)
 
@@ -274,7 +272,6 @@ def delete_item(
         action="delete_item",
     )
 
-    return None
 
 
 # Initialize OpenTelemetry after all middleware and routes are registered.

@@ -228,8 +228,6 @@ jobs:
       - name: Checkout application repository
         uses: actions/checkout@v4
 
-      # GitHub Actions obtains an OIDC token and exchanges it
-      # for temporary AWS credentials.
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -421,19 +419,22 @@ jobs:
       # ========================================================
 
       - name: Install k6
+        shell: bash
         run: |
-          sudo gpg \
-            --no-default-keyring \
-            --keyring /usr/share/keyrings/k6-archive-keyring.gpg \
-            --keyserver hkp://keyserver.ubuntu.com:80 \
-            --recv-keys C780D0BDB1A69C86A2BDB23A37BB31D8D977C2BD
+          curl -fsSL https://dl.k6.io/key.gpg \
+            | gpg --dearmor \
+            | sudo tee /usr/share/keyrings/k6-archive-keyring.gpg \
+              >/dev/null
 
           echo \
             "deb [signed-by=/usr/share/keyrings/k6-archive-keyring.gpg] https://dl.k6.io/deb stable main" \
-            | sudo tee /etc/apt/sources.list.d/k6.list
+            | sudo tee /etc/apt/sources.list.d/k6.list \
+              >/dev/null
 
           sudo apt-get update
           sudo apt-get install -y k6
+
+          k6 version
 
       - name: Configure local application hosts
         run: |

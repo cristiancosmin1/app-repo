@@ -16,12 +16,15 @@ from fastapi import (
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from opentelemetry import trace
+from prometheus_client import Counter, Histogram, generate_latest
+from prometheus_client.exposition import CONTENT_TYPE_LATEST
 from sqlalchemy.orm import Session
 
 from app import models, schemas
 from app.database import Base, engine, get_db
 from app.security import require_roles
 from app.telemetry import setup_telemetry
+
 
 Base.metadata.create_all(bind=engine)
 
@@ -51,6 +54,19 @@ if not logger.handlers:
     logger.addHandler(handler)
 
 
+REQUEST_COUNT = Counter(
+    "shopping_http_requests_total",
+    "Total HTTP requests processed by Shopping App",
+    ["method", "path", "status"],
+)
+
+REQUEST_LATENCY = Histogram(
+    "shopping_http_request_duration_seconds",
+    "HTTP request latency in seconds",
+    ["method", "path"],
+)
+
+
 @app.middleware("http")
 async def request_context_middleware(
     request: Request,
@@ -68,7 +84,6 @@ async def request_context_middleware(
 
     started_at = time.perf_counter()
 
-    # NEW
     span = trace.get_current_span()
     span_context = span.get_span_context()
 
@@ -79,6 +94,7 @@ async def request_context_middleware(
 
     try:
         response = await call_next(request)
+
         status_code = response.status_code
         error_class = None
 
@@ -86,8 +102,21 @@ async def request_context_middleware(
         status_code = 500
         error_class = exc.__class__.__name__
 
+        duration_seconds = time.perf_counter() - started_at
+
+        REQUEST_COUNT.labels(
+            method=request.method,
+            path=request.url.path,
+            status=str(status_code),
+        ).inc()
+
+        REQUEST_LATENCY.labels(
+            method=request.method,
+            path=request.url.path,
+        ).observe(duration_seconds)
+
         latency_ms = round(
-            (time.perf_counter() - started_at) * 1000,
+            duration_seconds * 1000,
             2,
         )
 
@@ -99,7 +128,7 @@ async def request_context_middleware(
                     "env": "local",
                     "run_id": run_id,
                     "correlation_id": correlation_id,
-                    "trace_id": trace_id,  # NEW
+                    "trace_id": trace_id,
                     "status_code": status_code,
                     "error_class": error_class,
                     "latency_ms": latency_ms,
@@ -111,8 +140,21 @@ async def request_context_middleware(
 
         raise
 
+    duration_seconds = time.perf_counter() - started_at
+
+    REQUEST_COUNT.labels(
+        method=request.method,
+        path=request.url.path,
+        status=str(status_code),
+    ).inc()
+
+    REQUEST_LATENCY.labels(
+        method=request.method,
+        path=request.url.path,
+    ).observe(duration_seconds)
+
     latency_ms = round(
-        (time.perf_counter() - started_at) * 1000,
+        duration_seconds * 1000,
         2,
     )
 
@@ -129,7 +171,7 @@ async def request_context_middleware(
                 "env": "local",
                 "run_id": run_id,
                 "correlation_id": correlation_id,
-                "trace_id": trace_id,  # NEW
+                "trace_id": trace_id,
                 "status_code": status_code,
                 "error_class": error_class,
                 "latency_ms": latency_ms,
@@ -164,10 +206,14 @@ def log_authorized_action(
                     "",
                 ),
                 "trace_id": format(
-                    trace.get_current_span().get_span_context().trace_id,
+                    trace.get_current_span()
+                    .get_span_context()
+                    .trace_id,
                     "032x",
                 )
-                if trace.get_current_span().get_span_context().is_valid
+                if trace.get_current_span()
+                .get_span_context()
+                .is_valid
                 else "",
             }
         )
@@ -181,7 +227,20 @@ def frontend():
 
 @app.get("/health")
 def health():
-    return {"status": "ok"}
+    return {
+        "status": "ok",
+    }
+
+
+@app.get(
+    "/metrics",
+    include_in_schema=False,
+)
+def metrics():
+    return Response(
+        content=generate_latest(),
+        media_type=CONTENT_TYPE_LATEST,
+    )
 
 
 @app.get(
@@ -192,7 +251,11 @@ def get_items(
     request: Request,
     db: Session = Depends(get_db),
     user: dict[str, Any] = Depends(
-        require_roles("reader", "writer", "admin")
+        require_roles(
+            "reader",
+            "writer",
+            "admin",
+        )
     ),
 ):
     log_authorized_action(
@@ -218,7 +281,10 @@ def create_item(
     request: Request,
     db: Session = Depends(get_db),
     user: dict[str, Any] = Depends(
-        require_roles("writer", "admin")
+        require_roles(
+            "writer",
+            "admin",
+        )
     ),
 ):
     db_item = models.Item(
@@ -273,6 +339,8 @@ def delete_item(
     )
 
 
-
 # Initialize OpenTelemetry after all middleware and routes are registered.
-setup_telemetry(app, engine)
+setup_telemetry(
+    app,
+    engine,
+)

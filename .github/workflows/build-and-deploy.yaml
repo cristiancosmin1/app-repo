@@ -13,9 +13,9 @@ env:
   IMAGE_NAME: cristiancosmin/shopping-app
   INFRA_REPOSITORY: cristiancosmin1/infra-repo
   PYTHON_VERSION: "3.12"
+  PYTHONPATH: "."
 
 jobs:
-
   # ============================================================
   # 1. QUALITY GATE
   # ============================================================
@@ -39,38 +39,22 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Install quality tools
+      - name: Install development and quality dependencies
         run: |
-          pip install pytest ruff pip-audit
-
-      # ----------------------------------------------------------
-      # Syntax validation
-      # ----------------------------------------------------------
+          pip install -r requirements-dev.txt
 
       - name: Validate Python syntax
         run: |
           python -m compileall -q app
 
-      # ----------------------------------------------------------
-      # Lint
-      # ----------------------------------------------------------
-
       - name: Run Ruff
         run: |
           ruff check app tests
-
-      # ----------------------------------------------------------
-      # Unit / integration tests
-      # ----------------------------------------------------------
 
       - name: Run tests
         run: |
           pytest -v tests \
             --junitxml=test-results.xml
-
-      # ----------------------------------------------------------
-      # Dependency security scan
-      # ----------------------------------------------------------
 
       - name: Run dependency security scan
         run: |
@@ -78,10 +62,6 @@ jobs:
             -r requirements.txt \
             --format=json \
             --output=pip-audit.json
-
-      # ----------------------------------------------------------
-      # Save artifacts even when debugging
-      # ----------------------------------------------------------
 
       - name: Upload quality artifacts
         if: always()
@@ -93,9 +73,8 @@ jobs:
             pip-audit.json
           if-no-files-found: ignore
 
-
   # ============================================================
-  # 2. BUILD IMAGE
+  # 2. BUILD AND IMAGE SECURITY
   # ============================================================
 
   build:
@@ -121,11 +100,6 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      # ----------------------------------------------------------
-      # Build locally first.
-      # Do NOT push before Trivy passes.
-      # ----------------------------------------------------------
-
       - name: Build Docker image
         uses: docker/build-push-action@v6
         with:
@@ -135,11 +109,6 @@ jobs:
           tags: ${{ env.IMAGE_NAME }}:${{ steps.image.outputs.tag }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
-
-      # ----------------------------------------------------------
-      # Container vulnerability scan
-      # Critical vulnerabilities block pipeline.
-      # ----------------------------------------------------------
 
       - name: Scan Docker image with Trivy
         uses: aquasecurity/trivy-action@0.28.0
@@ -160,10 +129,6 @@ jobs:
           path: trivy-results.sarif
           if-no-files-found: ignore
 
-      # ----------------------------------------------------------
-      # Push only after scan passes
-      # ----------------------------------------------------------
-
       - name: Log in to Docker Hub
         uses: docker/login-action@v3
         with:
@@ -174,7 +139,6 @@ jobs:
         run: |
           docker push \
             "${IMAGE_NAME}:${{ steps.image.outputs.tag }}"
-
 
   # ============================================================
   # 3. GITOPS DEPLOY
@@ -249,11 +213,8 @@ jobs:
 
           git push
 
-
   # ============================================================
   # 4. POST-DEPLOY VALIDATION
-  #
-  # Requires a GitHub runner that can reach the EKS cluster.
   # ============================================================
 
   post-deploy:
@@ -279,10 +240,6 @@ jobs:
             --region eu-central-1 \
             --name devops-levelup-staging-cluster
 
-      # ----------------------------------------------------------
-      # Wait for ArgoCD / Kubernetes deployment
-      # ----------------------------------------------------------
-
       - name: Wait for Shopping deployment
         run: |
           kubectl rollout status \
@@ -294,10 +251,6 @@ jobs:
         if: always()
         run: |
           kubectl get pods -n shopping -o wide
-
-      # ----------------------------------------------------------
-      # Resolve LoadBalancer dynamically
-      # ----------------------------------------------------------
 
       - name: Get ingress LoadBalancer
         id: ingress
@@ -316,26 +269,39 @@ jobs:
 
           echo "hostname=$LB_HOSTNAME" >> "$GITHUB_OUTPUT"
 
-      # ----------------------------------------------------------
-      # Smoke test
-      # ----------------------------------------------------------
-
-      - name: Smoke test health endpoint
+      - name: Resolve LoadBalancer IP
+        id: ingress-ip
         shell: bash
         run: |
           LB="${{ steps.ingress.outputs.hostname }}"
 
+          LB_IP="$(dig +short "$LB" | grep -E '^[0-9.]+' | head -n1)"
+
+          if [ -z "$LB_IP" ]; then
+            echo "Could not resolve LoadBalancer IP."
+            exit 1
+          fi
+
+          echo "ip=$LB_IP" >> "$GITHUB_OUTPUT"
+
+      # ========================================================
+      # SMOKE TEST
+      # ========================================================
+
+      - name: Smoke test health endpoint
+        shell: bash
+        run: |
           curl \
             --fail \
             --silent \
             --show-error \
             --insecure \
-            --resolve app.local:443:$(dig +short "$LB" | head -n1) \
+            --resolve app.local:443:${{ steps.ingress-ip.outputs.ip }} \
             https://app.local/health
 
-      # ----------------------------------------------------------
-      # Get Alice password from AWS Secrets Manager
-      # ----------------------------------------------------------
+      # ========================================================
+      # TEST CREDENTIALS
+      # ========================================================
 
       - name: Load functional test credentials
         id: credentials
@@ -350,15 +316,20 @@ jobs:
               | jq -r '.ALICE_PASSWORD'
           )"
 
+          if [ -z "$ALICE_PASSWORD" ] || [ "$ALICE_PASSWORD" = "null" ]; then
+            echo "Alice password was not found."
+            exit 1
+          fi
+
           echo "::add-mask::$ALICE_PASSWORD"
 
           echo \
             "alice_password=$ALICE_PASSWORD" \
             >> "$GITHUB_OUTPUT"
 
-      # ----------------------------------------------------------
-      # Obtain Keycloak token
-      # ----------------------------------------------------------
+      # ========================================================
+      # KEYCLOAK TOKEN
+      # ========================================================
 
       - name: Obtain Keycloak access token
         id: token
@@ -366,16 +337,13 @@ jobs:
         env:
           ALICE_PASSWORD: ${{ steps.credentials.outputs.alice_password }}
         run: |
-          LB="${{ steps.ingress.outputs.hostname }}"
-          LB_IP="$(dig +short "$LB" | head -n1)"
-
           RESPONSE="$(
             curl \
               --fail \
               --silent \
               --show-error \
               --insecure \
-              --resolve auth.local:443:"$LB_IP" \
+              --resolve auth.local:443:${{ steps.ingress-ip.outputs.ip }} \
               -X POST \
               https://auth.local/realms/devops-lvlup/protocol/openid-connect/token \
               -H 'Content-Type: application/x-www-form-urlencoded' \
@@ -390,7 +358,6 @@ jobs:
 
           if [ -z "$TOKEN" ] || [ "$TOKEN" = "null" ]; then
             echo "Could not obtain Keycloak access token."
-            echo "$RESPONSE"
             exit 1
           fi
 
@@ -398,46 +365,40 @@ jobs:
 
           echo "access_token=$TOKEN" >> "$GITHUB_OUTPUT"
 
-      # ----------------------------------------------------------
-      # Functional GET
-      # ----------------------------------------------------------
+      # ========================================================
+      # FUNCTIONAL GET
+      # ========================================================
 
       - name: Functional test GET items
         shell: bash
         env:
           TOKEN: ${{ steps.token.outputs.access_token }}
         run: |
-          LB="${{ steps.ingress.outputs.hostname }}"
-          LB_IP="$(dig +short "$LB" | head -n1)"
-
           curl \
             --fail \
             --silent \
             --show-error \
             --insecure \
-            --resolve app.local:443:"$LB_IP" \
+            --resolve app.local:443:${{ steps.ingress-ip.outputs.ip }} \
             -H "Authorization: Bearer ${TOKEN}" \
             https://app.local/items \
             | tee functional-get-response.json
 
-      # ----------------------------------------------------------
-      # Functional POST
-      # ----------------------------------------------------------
+      # ========================================================
+      # FUNCTIONAL POST
+      # ========================================================
 
       - name: Functional test POST item
         shell: bash
         env:
           TOKEN: ${{ steps.token.outputs.access_token }}
         run: |
-          LB="${{ steps.ingress.outputs.hostname }}"
-          LB_IP="$(dig +short "$LB" | head -n1)"
-
           curl \
             --fail \
             --silent \
             --show-error \
             --insecure \
-            --resolve app.local:443:"$LB_IP" \
+            --resolve app.local:443:${{ steps.ingress-ip.outputs.ip }} \
             -X POST \
             https://app.local/items \
             -H "Authorization: Bearer ${TOKEN}" \
@@ -448,15 +409,12 @@ jobs:
             }' \
             | tee functional-post-response.json
 
-      # ----------------------------------------------------------
-      # k6
-      # ----------------------------------------------------------
+      # ========================================================
+      # K6 PERFORMANCE TEST
+      # ========================================================
 
       - name: Install k6
         run: |
-          sudo gpg \
-            -k
-
           sudo gpg \
             --no-default-keyring \
             --keyring /usr/share/keyrings/k6-archive-keyring.gpg \
@@ -470,22 +428,21 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y k6
 
-      - name: Run k6 performance baseline
-        shell: bash
-        env:
-          KC_PASSWORD: ${{ steps.credentials.outputs.alice_password }}
+      - name: Configure local application hosts
         run: |
-          LB="${{ steps.ingress.outputs.hostname }}"
-          LB_IP="$(dig +short "$LB" | head -n1)"
-
           sudo sed -i \
             '/app\.local/d; /auth\.local/d' \
             /etc/hosts
 
           echo \
-            "${LB_IP} app.local auth.local" \
+            "${{ steps.ingress-ip.outputs.ip }} app.local auth.local" \
             | sudo tee -a /etc/hosts
 
+      - name: Run k6 performance baseline
+        shell: bash
+        env:
+          KC_PASSWORD: ${{ steps.credentials.outputs.alice_password }}
+        run: |
           mkdir -p performance/results
 
           k6 run \
@@ -493,9 +450,9 @@ jobs:
             -e KC_PASSWORD="$KC_PASSWORD" \
             performance/shopping-test.js
 
-      # ----------------------------------------------------------
-      # Artifacts
-      # ----------------------------------------------------------
+      # ========================================================
+      # ARTIFACTS
+      # ========================================================
 
       - name: Upload post-deploy artifacts
         if: always()
@@ -509,9 +466,9 @@ jobs:
             performance/results/summary.txt
           if-no-files-found: ignore
 
-      # ----------------------------------------------------------
-      # Debug info on failure
-      # ----------------------------------------------------------
+      # ========================================================
+      # DEBUG ON FAILURE
+      # ========================================================
 
       - name: Collect Kubernetes debugging information
         if: failure()

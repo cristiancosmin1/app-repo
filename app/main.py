@@ -25,7 +25,6 @@ from app.database import Base, engine, get_db
 from app.security import require_roles
 from app.telemetry import setup_telemetry
 
-
 Base.metadata.create_all(bind=engine)
 
 

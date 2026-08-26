@@ -240,17 +240,69 @@ jobs:
             --region eu-central-1 \
             --name devops-levelup-staging-cluster
 
-      - name: Wait for Shopping deployment
+      # ----------------------------------------------------------
+      # Argo Rollouts-aware validation.
+      #
+      # We intentionally DO NOT wait for RolloutCompleted here.
+      # A canary release is expected to stop at manual pause steps.
+      # The pipeline only requires the Rollout to have available
+      # replicas so that post-deploy tests can continue.
+      # ----------------------------------------------------------
+
+      - name: Wait for Shopping rollout
+        shell: bash
         run: |
-          kubectl rollout status \
-            deployment/shopping-app \
-            -n shopping \
-            --timeout=300s
+          echo "Waiting for Shopping App Rollout to become available..."
+
+          for i in {1..60}; do
+            AVAILABLE="$(
+              kubectl get rollout shopping-app \
+                -n shopping \
+                -o jsonpath='{.status.availableReplicas}' \
+                2>/dev/null || true
+            )"
+
+            PHASE="$(
+              kubectl get rollout shopping-app \
+                -n shopping \
+                -o jsonpath='{.status.phase}' \
+                2>/dev/null || true
+            )"
+
+            echo \
+              "Rollout phase=${PHASE:-unknown}, availableReplicas=${AVAILABLE:-0}"
+
+            if [ "${AVAILABLE:-0}" -ge 1 ]; then
+              echo "Shopping App Rollout is available."
+              exit 0
+            fi
+
+            sleep 5
+          done
+
+          echo "Shopping App Rollout did not become available in time."
+
+          kubectl describe rollout shopping-app \
+            -n shopping
+
+          exit 1
 
       - name: Show application pods
         if: always()
         run: |
           kubectl get pods -n shopping -o wide
+
+          echo
+          echo "Shopping App Rollout:"
+          kubectl get rollout shopping-app \
+            -n shopping \
+            -o wide || true
+
+          echo
+          echo "Shopping App ReplicaSets:"
+          kubectl get replicasets \
+            -n shopping \
+            -o wide || true
 
       - name: Get ingress LoadBalancer
         id: ingress
@@ -489,13 +541,19 @@ jobs:
           kubectl get applications -n argocd \
             > debug/argocd-applications.txt || true
 
-          kubectl describe deployment shopping-app \
+          kubectl describe rollout shopping-app \
             -n shopping \
-            > debug/shopping-deployment.txt || true
+            > debug/shopping-rollout.txt || true
+
+          kubectl get replicasets \
+            -n shopping \
+            -o wide \
+            > debug/shopping-replicasets.txt || true
 
           kubectl logs \
             -n shopping \
-            deployment/shopping-app \
+            -l app.kubernetes.io/name=shopping-app \
+            --all-containers=true \
             --tail=500 \
             > debug/shopping-app.log \
             2>&1 || true

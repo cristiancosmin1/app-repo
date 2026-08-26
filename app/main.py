@@ -228,6 +228,7 @@ def frontend():
 def health():
     return {
         "status": "ok",
+        "release": "canary-v2",
     }
 
 

@@ -7,5 +7,5 @@ def test_health(client):
     assert response.status_code == status.HTTP_200_OK
     assert response.json() == {
         "status": "ok",
-        "release": "canary-v3",
+        "release": "canary-v4",
     }

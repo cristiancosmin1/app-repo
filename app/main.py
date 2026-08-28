@@ -1,4 +1,6 @@
 import json
+import asyncio
+import os
 import logging
 import time
 import uuid
@@ -35,6 +37,15 @@ app = FastAPI(
 
 BASE_DIR = Path(__file__).resolve().parent
 STATIC_DIR = BASE_DIR / "static"
+
+CHAOS_LATENCY_ENABLED = (
+    os.getenv("CHAOS_LATENCY_ENABLED", "false").lower()
+    == "true"
+)
+
+CHAOS_LATENCY_MS = int(
+    os.getenv("CHAOS_LATENCY_MS", "0")
+)
 
 
 app.mount(
@@ -82,6 +93,14 @@ async def request_context_middleware(
     request.state.run_id = run_id
 
     started_at = time.perf_counter()
+
+    if (
+        CHAOS_LATENCY_ENABLED
+        and request.url.path != "/metrics"
+    ):
+        await asyncio.sleep(
+            CHAOS_LATENCY_MS / 1000
+        )
 
     span = trace.get_current_span()
     span_context = span.get_span_context()

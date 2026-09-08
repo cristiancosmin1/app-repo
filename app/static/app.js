@@ -1,3 +1,5 @@
+import Keycloak from "/static/vendor/keycloak.js";
+
 const form = document.getElementById("item-form");
 const itemsList = document.getElementById("items-list");
 const itemsSection = document.getElementById("items-section");

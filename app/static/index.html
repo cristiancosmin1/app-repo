@@ -13,9 +13,22 @@
   <main class="container">
     <h1>Shopping List</h1>
 
-    <form id="item-form">
+    <section id="auth-section">
+      <p id="user-info">Nu ești autentificat.</p>
+
+      <button id="login-button" type="button">
+        Login
+      </button>
+
+      <button id="logout-button" type="button" hidden>
+        Logout
+      </button>
+    </section>
+
+    <form id="item-form" hidden>
       <div class="form-group">
         <label for="name">Produs</label>
+
         <input
           id="name"
           name="name"
@@ -27,6 +40,7 @@
 
       <div class="form-group">
         <label for="quantity">Cantitate</label>
+
         <input
           id="quantity"
           name="quantity"
@@ -37,18 +51,21 @@
         >
       </div>
 
-      <button type="submit">Adaugă produs</button>
+      <button type="submit">
+        Adaugă produs
+      </button>
     </form>
 
     <p id="message" class="message"></p>
 
-    <section>
+    <section id="items-section" hidden>
       <h2>Produse</h2>
 
       <ul id="items-list"></ul>
     </section>
   </main>
 
+  <script src="https://auth.local/js/keycloak.js"></script>
   <script src="/static/app.js"></script>
 </body>
 </html>

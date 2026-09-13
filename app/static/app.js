@@ -10,7 +10,7 @@ const logoutButton = document.getElementById("logout-button");
 const userInfo = document.getElementById("user-info");
 
 const keycloak = new Keycloak({
-  url: "https://auth.local",
+  url: "https://auth.cdevops-levelup.ro",
   realm: "devops-lvlup",
   clientId: "shopping-app"
 });
